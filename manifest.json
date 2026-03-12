@@ -3,8 +3,8 @@
   "short_name": "ColorWalk",
   "start_url": "./index.html",
   "display": "standalone",
-  "background_color": "#f6f7fb",
-  "theme_color": "#111827",
+  "background_color": "#0b1020",
+  "theme_color": "#0b1020",
   "icons": [
     {
       "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'%3E%3Crect width='192' height='192' rx='36' fill='%23111827'/%3E%3Ccircle cx='56' cy='64' r='18' fill='%23ef4444'/%3E%3Ccircle cx='96' cy='64' r='18' fill='%23f59e0b'/%3E%3Ccircle cx='136' cy='64' r='18' fill='%2310b981'/%3E%3Crect x='40' y='104' width='112' height='16' rx='8' fill='white'/%3E%3C/svg%3E",

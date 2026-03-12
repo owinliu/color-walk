@@ -1,5 +1,6 @@
-const CACHE='color-walk-v10';
-const CORE=['./','./index.html','./manifest.json'];
+// NOTE: bump CACHE when releasing to force a clean asset set.
+const CACHE = "color-walk-v11";
+const CORE = ["./", "./index.html", "./styles.css", "./app.js", "./manifest.json"];
 
 self.addEventListener('install',event=>{
   event.waitUntil(caches.open(CACHE).then(c=>c.addAll(CORE)));
@@ -19,20 +20,36 @@ self.addEventListener('fetch',event=>{
   if(req.method!=='GET') return;
   const url=new URL(req.url);
 
-  // HTML 走网络优先，避免发布后仍拿到旧页面逻辑
-  if(req.mode==='navigate' || (req.headers.get('accept')||'').includes('text/html')){
-    event.respondWith(fetch(req).then(res=>{
-      const copy=res.clone();
-      caches.open(CACHE).then(c=>c.put('./index.html',copy));
-      return res;
-    }).catch(()=>caches.match('./index.html')));
+  const accept = (req.headers.get("accept") || "");
+  const isHTML = req.mode === "navigate" || accept.includes("text/html");
+  const isSameOrigin = url.origin === self.location.origin;
+  const isAppAsset =
+    isSameOrigin &&
+    (url.pathname.endsWith("/app.js") ||
+      url.pathname.endsWith("/styles.css") ||
+      url.pathname.endsWith("/manifest.json"));
+
+  // HTML / 核心脚本 / 样式：网络优先，避免发布后混用旧逻辑
+  if (isHTML || isAppAsset) {
+    event.respondWith(
+      fetch(req, { cache: "no-store" })
+        .then((res) => {
+          const copy = res.clone();
+          caches.open(CACHE).then((c) => {
+            // 统一以请求本身作为 key（含路径），避免路径变化导致取错资源
+            c.put(req, copy);
+          });
+          return res;
+        })
+        .catch(() => caches.match(req).then((hit) => hit || caches.match("./index.html")))
+    );
     return;
   }
 
   // 其他静态资源缓存优先 + 回源更新
   event.respondWith(caches.match(req).then(hit=>{
     const network=fetch(req).then(res=>{
-      if(url.origin===self.location.origin){
+      if(isSameOrigin){
         const copy=res.clone();
         caches.open(CACHE).then(c=>c.put(req,copy));
       }
