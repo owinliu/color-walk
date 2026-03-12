@@ -140,11 +140,39 @@ $('albumInput').onchange=handlePick;
 
 $('export').onclick=async()=>{
  if(!state.items.length) return toast('先拍几张再导出',0);
- const png=await makePoster(); const a=document.createElement('a');a.href=png;a.download=`color-walk-${challenge.d}.png`;a.click(); toast('已导出',1);
+ const png=await makePoster();
+ const fileName=`color-walk-${challenge.d}.png`;
+ try{
+   const file=await dataUrlToFile(png,fileName);
+   if(navigator.canShare && navigator.canShare({files:[file]})){
+     await navigator.share({
+       title:'Color Walk 九宫格',
+       text:'我的 Color Walk 今日九宫格',
+       files:[file]
+     });
+     toast('已打开系统分享，可直接存到相册',1);
+     return;
+   }
+ }catch(err){
+   console.error('share failed', err);
+ }
+ const a=document.createElement('a');
+ a.href=png;
+ a.download=fileName;
+ a.click();
+ toast('已导出，请在下载中保存到相册',1);
 }
 
 function toast(msg,ok){$('status').className=ok?'ok':'bad';$('status').textContent=msg;setTimeout(render,1600)}
 function fileToData(f){return new Promise((res,rej)=>{const fr=new FileReader();fr.onload=()=>res(fr.result);fr.onerror=rej;fr.readAsDataURL(f)})}
+function dataUrlToFile(dataUrl,fileName){
+  const [meta,base64]=dataUrl.split(',');
+  const mime=(meta.match(/data:(.*?);base64/)||[])[1]||'image/png';
+  const bin=atob(base64);
+  const arr=new Uint8Array(bin.length);
+  for(let i=0;i<bin.length;i++) arr[i]=bin.charCodeAt(i);
+  return Promise.resolve(new File([arr],fileName,{type:mime}));
+}
 function loadDataImage(src){return new Promise((res,rej)=>{const img=new Image();img.onload=()=>res(img);img.onerror=rej;img.src=src})}
 async function normalizeImage(dataUrl){
   const img=await loadDataImage(dataUrl);
