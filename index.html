@@ -186,13 +186,19 @@ $('cameraInput').onchange=handlePick;
 $('albumInput').onchange=handlePick;
 
 let uploading=false;
+let uploadOpId=0;
 async function handlePick(e){
   const file=e.target.files?.[0]; if(!file) return;
   if(uploading){ e.target.value=''; return; }
+
   uploading=true;
-  const beforeCount=current().items.length;
+  const opId=++uploadOpId;
+  const challengeIdAtStart=dayState.currentId;
+  const cur=dayState.challenges.find(c=>c.id===challengeIdAtStart);
+  const beforeCount=cur?.items?.length ?? 0;
+
   try{
-    const cur=current();
+    if(!cur){toast('挑战不存在，请重试',0);return}
     if(cur.items.length>=MAX){toast('当前挑战已满9张',0);return}
 
     let data=await fileToData(file);
@@ -211,8 +217,11 @@ async function handlePick(e){
     toast('收集成功 +1',1);
   }catch(err){
     console.error(err);
-    // 若本次实际已写入成功，不再误报失败
-    if(current().items.length<=beforeCount){
+    // 仅当前上传操作才有资格报错，且确认该挑战确实未增加图片，避免误报
+    const sameOp = opId===uploadOpId;
+    const sameChallenge = dayState.challenges.find(c=>c.id===challengeIdAtStart);
+    const actuallyAdded = (sameChallenge?.items?.length ?? 0) > beforeCount;
+    if(sameOp && !actuallyAdded){
       toast('图片解析失败，请换一张或截图后再试',0);
     }
   }finally{
