@@ -88,7 +88,7 @@ function viewHome() {
   const ch = cur();
   const chips = PRESET_THEMES.map((t, i) => `<button class="chip" data-preset="${i}">${t.name}</button>`).join('') + `<button class="chip" id="toRandom">随机色</button>`;
   return `
-    ${viewTop('挑战', iconCalendar(), '<span class="avatar-dot"></span>', true)
+    ${viewTop('挑战', iconCalendar(), '<span class="avatar-dot"></span>', true)}
     <main class="content home">
       <div class="chips">${chips}</div>
       <section class="hero" style="--hero:${ch.theme.hex}">
@@ -147,7 +147,7 @@ function viewChallenge() {
 
 function viewMy() {
   return `
-    ${viewTop('我的', iconCalendar(), '<span class="avatar-dot"></span>', true)
+    ${viewTop('我的', iconCalendar(), '<span class="avatar-dot"></span>', true)}
     <main class="content my">
       <section class="card profile"><div class="avatar"></div><div><b>Owin</b><span>本周已完成 2 个挑战</span></div></section>
       <section class="card stats"><div><b>12</b><span>照片</span></div><div><b>3</b><span>拼图</span></div><div><b>2</b><span>挑战</span></div></section>
