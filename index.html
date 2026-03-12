@@ -39,8 +39,10 @@
   <section class="card">
     <div class="row" style="margin-bottom:10px"><b>进度：<span id="count">0</span>/9</b><span id="status" class="muted">开始收集吧</span></div>
     <div class="row" style="margin-bottom:10px;justify-content:flex-start">
-      <label class="primary" for="photo">拍照 / 上传</label>
-      <input id="photo" type="file" accept="image/*" capture="environment">
+      <label class="primary" for="cameraInput">拍照</label>
+      <input id="cameraInput" type="file" accept="image/*" capture="environment">
+      <label for="albumInput">从相册选择</label>
+      <input id="albumInput" type="file" accept="image/*">
       <button id="clear">清空本挑战</button>
       <button id="export">导出九宫格</button>
     </div>
@@ -100,13 +102,15 @@ $('reroll').onclick=()=>{
 
 $('clear').onclick=()=>{if(confirm('清空当前挑战数据？')){state.items=[];save();render();toast('已清空',1)}}
 
-$('photo').onchange=async(e)=>{
+async function handlePick(e){
  const file=e.target.files?.[0]; if(!file) return;
  if(state.items.length>=MAX){toast('已满9张',0);e.target.value='';return}
  const data=await fileToData(file); const avg=await centerColor(data);
  if(!match(avg,hex2rgb(state.target.hex))){toast('颜色不够接近，再试试',0);e.target.value='';return}
  state.items.push({data,at:Date.now()}); save(); render(); toast('收集成功 +1',1); e.target.value='';
 }
+$('cameraInput').onchange=handlePick;
+$('albumInput').onchange=handlePick;
 
 $('export').onclick=async()=>{
  if(!state.items.length) return toast('先拍几张再导出',0);
