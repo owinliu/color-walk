@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
+  <meta name="theme-color" content="#111827"/>
+  <meta name="apple-mobile-web-app-capable" content="yes"/>
+  <title>Color Walk</title>
+  <link rel="manifest" href="./manifest.json"/>
+  <style>
+    :root{--bg:#f6f7fb;--card:#fff;--text:#1f2937;--muted:#6b7280;--bd:#e5e7eb}
+    *{box-sizing:border-box}body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Segoe UI",sans-serif;background:var(--bg);color:var(--text)}
+    .wrap{max-width:900px;margin:0 auto;padding:14px}.card{background:var(--card);border:1px solid var(--bd);border-radius:14px;padding:14px;margin-bottom:12px}
+    h1{margin:0 0 8px;font-size:1.2rem}.muted{color:var(--muted);font-size:.9rem}.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;justify-content:space-between}
+    .chip{display:inline-flex;align-items:center;gap:10px;border:1px solid var(--bd);border-radius:999px;padding:8px 12px;background:#fff}
+    .dot{width:22px;height:22px;border-radius:999px;border:1px solid rgba(0,0,0,.15)}
+    button,label{border:1px solid var(--bd);background:#fff;border-radius:10px;padding:10px 12px;font-weight:600;cursor:pointer;color:var(--text)}
+    .primary{background:#111827;color:#fff;border-color:#111827} input[type=file]{display:none}
+    .grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}.slot{aspect-ratio:1/1;border:1px dashed var(--bd);border-radius:10px;background:#fafafa;overflow:hidden;display:flex;align-items:center;justify-content:center;font-size:.8rem;color:var(--muted);position:relative}
+    .slot img{width:100%;height:100%;object-fit:cover}.badge{position:absolute;top:6px;left:6px;background:rgba(0,0,0,.75);color:#fff;font-size:.7rem;padding:2px 6px;border-radius:999px}
+    .ok{color:#0f766e}.bad{color:#b91c1c}@media(max-width:640px){.wrap{padding:10px}}
+  </style>
+</head>
+<body>
+<main class="wrap">
+  <section class="card">
+    <h1>Color Walk · 今日同色挑战</h1>
+    <p class="muted">随机一个颜色，拍 9 张同色系照片。支持手机拍照、好友链接同题挑战。</p>
+    <div class="row" style="margin-top:10px">
+      <div class="chip"><span class="dot" id="dot"></span><div><div><b id="name">-</b></div><div class="muted" id="hex">-</div></div></div>
+      <div class="row">
+        <button id="copyChallenge">复制挑战链接</button>
+        <button id="reroll">重新抽色</button>
+      </div>
+    </div>
+    <div class="muted" id="challengeMeta" style="margin-top:8px"></div>
+  </section>
+
+  <section class="card">
+    <div class="row" style="margin-bottom:10px"><b>进度：<span id="count">0</span>/9</b><span id="status" class="muted">开始收集吧</span></div>
+    <div class="row" style="margin-bottom:10px;justify-content:flex-start">
+      <label class="primary" for="photo">拍照 / 上传</label>
+      <input id="photo" type="file" accept="image/*" capture="environment">
+      <button id="clear">清空本挑战</button>
+      <button id="export">导出九宫格</button>
+    </div>
+    <div class="grid" id="grid"></div>
+  </section>
+</main>
+<canvas id="cv" style="display:none"></canvas>
+<script>
+const COLORS=[
+ {name:'樱桃红',hex:'#d7263d'},{name:'柑橘橙',hex:'#f57c00'},{name:'向日葵黄',hex:'#f4c430'},
+ {name:'抹茶绿',hex:'#63a375'},{name:'湖水青',hex:'#2a9d8f'},{name:'天空蓝',hex:'#4f86f7'},
+ {name:'鸢尾紫',hex:'#7e57c2'},{name:'雾霾灰',hex:'#8d99ae'},{name:'奶油米',hex:'#d4c2a8'}
+];
+const PASS_H=24, PASS_L=0.28, MAX=9;
+const $=id=>document.getElementById(id);
+const q=new URLSearchParams(location.search);
+const today=new Date().toISOString().slice(0,10);
+const challengeDate=q.get('d')||today;
+const challengeHex=(q.get('c')||'').toLowerCase();
+
+function byHex(hex){return COLORS.find(c=>c.hex.toLowerCase()===hex)||{name:'自定义',hex}}
+function randColor(){return COLORS[Math.floor(Math.random()*COLORS.length)]}
+function storageKey(ch){return `cw:v2:${ch.d}:${ch.c}`}
+
+let challenge={d:challengeDate,c:(challengeHex||randColor().hex.toLowerCase())};
+let state=load()||{target:byHex(challenge.c),items:[]};
+if(!state.target?.hex) state.target=byHex(challenge.c);
+save();render();
+
+function load(){try{return JSON.parse(localStorage.getItem(storageKey(challenge)))}catch{return null}}
+function save(){localStorage.setItem(storageKey(challenge),JSON.stringify(state))}
+function challengeUrl(){const u=new URL(location.href);u.search=`?d=${challenge.d}&c=${state.target.hex.toLowerCase()}`;u.hash='';return u.toString()}
+
+function render(){
+ $('dot').style.background=state.target.hex;$('name').textContent=state.target.name;$('hex').textContent=state.target.hex;
+ $('count').textContent=state.items.length;$('challengeMeta').textContent=`挑战日：${challenge.d} · Challenge ID: ${challenge.d}-${state.target.hex}`;
+ const g=$('grid');g.innerHTML='';
+ for(let i=0;i<MAX;i++){const s=document.createElement('div');s.className='slot';const it=state.items[i];
+   if(it){const img=new Image();img.src=it.data;s.appendChild(img);const b=document.createElement('span');b.className='badge';b.textContent='#'+(i+1);s.appendChild(b)}
+   else s.textContent='空位 '+(i+1);
+   g.appendChild(s);
+ }
+ $('status').className=state.items.length===MAX?'ok':'muted';
+ $('status').textContent=state.items.length===MAX?'🎉 收集完成':'继续拍同色物体';
+}
+
+$('copyChallenge').onclick=async()=>{
+ const url=challengeUrl();
+ try{await navigator.clipboard.writeText(url);toast('挑战链接已复制',1)}catch{prompt('复制这个链接发给朋友：',url)}
+}
+
+$('reroll').onclick=()=>{
+ if(!confirm('重新抽色会进入新挑战（当前挑战数据保留在本机），继续？'))return;
+ const c=randColor();
+ location.href=`${location.pathname}?d=${today}&c=${encodeURIComponent(c.hex.toLowerCase())}`;
+}
+
+$('clear').onclick=()=>{if(confirm('清空当前挑战数据？')){state.items=[];save();render();toast('已清空',1)}}
+
+$('photo').onchange=async(e)=>{
+ const file=e.target.files?.[0]; if(!file) return;
+ if(state.items.length>=MAX){toast('已满9张',0);e.target.value='';return}
+ const data=await fileToData(file); const avg=await centerColor(data);
+ if(!match(avg,hex2rgb(state.target.hex))){toast('颜色不够接近，再试试',0);e.target.value='';return}
+ state.items.push({data,at:Date.now()}); save(); render(); toast('收集成功 +1',1); e.target.value='';
+}
+
+$('export').onclick=async()=>{
+ if(!state.items.length) return toast('先拍几张再导出',0);
+ const png=await makePoster(); const a=document.createElement('a');a.href=png;a.download=`color-walk-${challenge.d}.png`;a.click(); toast('已导出',1);
+}
+
+function toast(msg,ok){$('status').className=ok?'ok':'bad';$('status').textContent=msg;setTimeout(render,1600)}
+function fileToData(f){return new Promise((res,rej)=>{const fr=new FileReader();fr.onload=()=>res(fr.result);fr.onerror=rej;fr.readAsDataURL(f)})}
+function centerColor(src){return new Promise((res,rej)=>{const img=new Image();img.onload=()=>{const c=$('cv'),ctx=c.getContext('2d',{willReadFrequently:true});c.width=180;c.height=180;ctx.drawImage(img,0,0,180,180);const d=ctx.getImageData(40,40,100,100).data;let r=0,g=0,b=0,n=0;for(let i=0;i<d.length;i+=4){if(d[i+3]<10)continue;r+=d[i];g+=d[i+1];b+=d[i+2];n++}res({r:Math.round(r/n),g:Math.round(g/n),b:Math.round(b/n)})};img.onerror=rej;img.src=src})}
+function hex2rgb(h){const n=parseInt(h.replace('#',''),16);return{r:(n>>16)&255,g:(n>>8)&255,b:n&255}}
+function rgb2hsl({r,g,b}){r/=255;g/=255;b/=255;const mx=Math.max(r,g,b),mn=Math.min(r,g,b);let h=0,s=0,l=(mx+mn)/2;if(mx!==mn){const d=mx-mn;s=l>.5?d/(2-mx-mn):d/(mx+mn);if(mx===r)h=(g-b)/d+(g<b?6:0);else if(mx===g)h=(b-r)/d+2;else h=(r-g)/d+4;h*=60}return{h,s,l}}
+function match(a,b){const A=rgb2hsl(a),B=rgb2hsl(b);const dh=Math.min(Math.abs(A.h-B.h),360-Math.abs(A.h-B.h));return dh<=PASS_H&&Math.abs(A.l-B.l)<=PASS_L}
+
+async function makePoster(){
+ const c=document.createElement('canvas'),ctx=c.getContext('2d'); c.width=1080;c.height=1440;
+ ctx.fillStyle='#f8fafc';ctx.fillRect(0,0,1080,1440);ctx.fillStyle=state.target.hex;ctx.fillRect(0,0,1080,170);
+ ctx.fillStyle='#fff';ctx.font='700 50px -apple-system';ctx.fillText('Color Walk',48,94);ctx.font='400 28px -apple-system';ctx.fillText(`${challenge.d} · ${state.target.name} ${state.target.hex}`,48,136);
+ const pad=48,gap=18,cell=Math.floor((1080-pad*2-gap*2)/3);
+ for(let i=0;i<9;i++){const x=pad+(i%3)*(cell+gap),y=220+Math.floor(i/3)*(cell+gap);round(ctx,x,y,cell,cell,16,'#e5e7eb');
+   if(state.items[i]){const img=await loadImg(state.items[i].data);cover(ctx,img,x,y,cell,cell,16)}
+ }
+ return c.toDataURL('image/png');
+}
+function loadImg(src){return new Promise((r,j)=>{const i=new Image();i.onload=()=>r(i);i.onerror=j;i.src=src})}
+function cover(ctx,img,x,y,w,h,rd){const sc=Math.max(w/img.width,h/img.height),nw=img.width*sc,nh=img.height*sc,ox=x+(w-nw)/2,oy=y+(h-nh)/2;ctx.save();rpath(ctx,x,y,w,h,rd);ctx.clip();ctx.drawImage(img,ox,oy,nw,nh);ctx.restore()}
+function round(ctx,x,y,w,h,rd,fill){ctx.fillStyle=fill;rpath(ctx,x,y,w,h,rd);ctx.fill()}
+function rpath(ctx,x,y,w,h,r){r=Math.min(r,w/2,h/2);ctx.beginPath();ctx.moveTo(x+r,y);ctx.arcTo(x+w,y,x+w,y+h,r);ctx.arcTo(x+w,y+h,x,y+h,r);ctx.arcTo(x,y+h,x,y,r);ctx.arcTo(x,y,x+w,y,r);ctx.closePath()}
+
+if('serviceWorker' in navigator){navigator.serviceWorker.register('./sw.js').catch(()=>{})}
+</script>
+</body>
+</html>
