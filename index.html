@@ -185,28 +185,40 @@ $('clear').onclick=()=>{
 $('cameraInput').onchange=handlePick;
 $('albumInput').onchange=handlePick;
 
+let uploading=false;
 async function handlePick(e){
   const file=e.target.files?.[0]; if(!file) return;
-  const cur=current();
-  if(cur.items.length>=MAX){toast('当前挑战已满9张',0);e.target.value='';return}
+  if(uploading){ e.target.value=''; return; }
+  uploading=true;
+  const beforeCount=current().items.length;
   try{
+    const cur=current();
+    if(cur.items.length>=MAX){toast('当前挑战已满9张',0);return}
+
     let data=await fileToData(file);
     data=await normalizeImage(data);
     const avg=await centerColor(data);
-    if(!match(avg,hex2rgb(cur.target.hex))){toast('颜色不够接近，再试试',0);e.target.value='';return}
+
+    if(!match(avg,hex2rgb(cur.target.hex))){toast('颜色不够接近，再试试',0);return}
+
     cur.items.push({data,at:Date.now()});
     if(!saveDay()){
       cur.items.pop();
       toast('保存失败：手机存储不足，请先导出后清空',0);
-      e.target.value='';
       return;
     }
-    renderAll();toast('收集成功 +1',1);
+    renderAll();
+    toast('收集成功 +1',1);
   }catch(err){
     console.error(err);
-    toast('图片解析失败，请换一张或截图后再试',0);
+    // 若本次实际已写入成功，不再误报失败
+    if(current().items.length<=beforeCount){
+      toast('图片解析失败，请换一张或截图后再试',0);
+    }
+  }finally{
+    uploading=false;
+    e.target.value='';
   }
-  e.target.value='';
 }
 
 $('export').onclick=async()=>{
