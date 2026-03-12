@@ -19,7 +19,14 @@ let state = load() || init();
 
 function init() {
   const first = createChallenge(randomTheme());
-  return { currentId: first.id, challenges: [first], collage: null };
+  return { currentId: first.id, challenges: [first], collage: null, homeThemeIndex: 0 };
+}
+
+function withVisualTheme(theme) {
+  const { h, s } = rgb2hsl(hex2rgb(theme.hex));
+  const tint = hslToHex(h, Math.max(22, Math.round(s * 55)), 92);
+  const accent = hslToHex(h, Math.max(26, Math.round(s * 50)), 82);
+  return { ...theme, tint, accent };
 }
 
 function randomTheme(prevHex) {
@@ -27,7 +34,6 @@ function randomTheme(prevHex) {
   let s = 65 + Math.floor(Math.random() * 20);
   let l = 45 + Math.floor(Math.random() * 15);
 
-  // 避免连续两次颜色过近，提升“真随机但有明显变化”的体感
   if (prevHex) {
     const prev = rgb2hsl(hex2rgb(prevHex));
     let tries = 0;
@@ -42,7 +48,7 @@ function randomTheme(prevHex) {
   }
 
   const hex = hslToHex(h, s, l);
-  return { name: colorNameFromHue(h), hex, subtitle: '今日随机主题色' };
+  return withVisualTheme({ name: colorNameFromHue(h), hex, subtitle: '今日随机主题色' });
 }
 
 function colorNameFromHue(h) {
@@ -67,7 +73,8 @@ function load() {
     // 兼容旧结构：colorIndex/target/items(string[]) -> theme/items(object[])
     raw.challenges = raw.challenges.map((c) => {
       const preset = Number.isInteger(c.colorIndex) ? PRESET_THEMES[c.colorIndex] : null;
-      const theme = c.theme || (c.target ? { name: c.target.name || '主题色', hex: c.target.hex || randomTheme().hex, subtitle: '迁移主题色' } : null) || preset || randomTheme();
+      const rawTheme = c.theme || (c.target ? { name: c.target.name || '主题色', hex: c.target.hex || randomTheme().hex, subtitle: '迁移主题色' } : null) || preset || randomTheme();
+      const theme = withVisualTheme(rawTheme);
       const items = (c.items || []).map((it) => (typeof it === 'string' ? { data: it, at: Date.now() } : it));
       return {
         id: c.id || `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
@@ -80,6 +87,7 @@ function load() {
     if (!raw.currentId || !raw.challenges.some((c) => c.id === raw.currentId)) {
       raw.currentId = raw.challenges[0].id;
     }
+    if (!Number.isInteger(raw.homeThemeIndex)) raw.homeThemeIndex = 0;
 
     return raw;
   } catch {
@@ -111,15 +119,16 @@ function viewTop(title, left = iconCalendar(), right = '<span class="avatar-dot"
 }
 
 function viewHome() {
-  const ch = cur();
-  const chips = PRESET_THEMES.map((t, i) => `<button class="chip" data-preset="${i}">${t.name}</button>`).join('') + `<button class="chip" id="toRandom">随机色</button>`;
+  const homeTheme = withVisualTheme(PRESET_THEMES[state.homeThemeIndex] || PRESET_THEMES[0]);
+  const chips = PRESET_THEMES.map((t, i) => `<button class="chip ${state.homeThemeIndex===i?'active':''}" data-preset="${i}">${t.name}</button>`).join('') + `<button class="chip" id="toRandom">随机色</button>`;
   return `
     ${viewTop('挑战', iconCalendar(), '<span class="avatar-dot"></span>', true)}
     <main class="content home">
       <div class="chips">${chips}</div>
-      <section class="hero" style="--hero:${ch.theme.hex}">
-        <div class="hero-title">${ch.theme.name}挑战</div>
+      <section class="hero" style="background:${homeTheme.tint || '#EDE9FE'}">
+        <div class="hero-title">${homeTheme.name}挑战</div>
         <div class="hero-sub">本周推荐 · 选色板更容易出片</div>
+        <div class="hero-accent" style="background:${homeTheme.accent || '#CFC9DF'}"></div>
       </section>
       <section class="card list">
         <div class="sec-row"><b>流行挑战</b><span>查看全部</span></div>
@@ -202,10 +211,10 @@ function viewResultModal() {
 
 function bind() {
   document.querySelectorAll('[data-tab]').forEach(el => el.onclick = () => { route = el.dataset.tab; render(); });
-  document.querySelectorAll('[data-preset]').forEach(el => el.onclick = () => { const p = PRESET_THEMES[+el.dataset.preset]; cur().theme = p; save(); render(); });
-  document.querySelectorAll('[data-go-ch]').forEach(el => el.onclick = () => { const p = PRESET_THEMES[+el.dataset.goCh]; cur().theme = p; route = 'challenge'; challengeState = 'preselect'; save(); render(); });
+  document.querySelectorAll('[data-preset]').forEach(el => el.onclick = () => { state.homeThemeIndex = +el.dataset.preset; save(); render(); });
+  document.querySelectorAll('[data-go-ch]').forEach(el => el.onclick = () => { route = 'challenge'; challengeState = 'preselect'; render(); });
 
-  const toRandom = $('toRandom'); if (toRandom) toRandom.onclick = () => { const c = cur(); c.theme = randomTheme(c.theme?.hex); save(); render(); };
+  const toRandom = $('toRandom'); if (toRandom) toRandom.onclick = () => { state.homeThemeIndex = Math.floor(Math.random() * PRESET_THEMES.length); save(); render(); };
   const shuffle = $('shuffle'); if (shuffle) shuffle.onclick = () => { const c = cur(); c.theme = randomTheme(c.theme?.hex); save(); render(); };
   const confirmBtn = $('confirm'); if (confirmBtn) confirmBtn.onclick = () => { challengeState = 'selected'; ensureChallengeSlot(); save(); render(); };
 
