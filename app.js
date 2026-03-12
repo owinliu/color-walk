@@ -59,9 +59,35 @@ function createChallenge(theme) {
   return { id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, createdAt: Date.now(), theme, items: [] };
 }
 
-function load() { try { return JSON.parse(localStorage.getItem(key)); } catch { return null; } }
+function load() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(key));
+    if (!raw || !Array.isArray(raw.challenges) || !raw.challenges.length) return null;
+
+    // 兼容旧结构：colorIndex/target/items(string[]) -> theme/items(object[])
+    raw.challenges = raw.challenges.map((c) => {
+      const preset = Number.isInteger(c.colorIndex) ? PRESET_THEMES[c.colorIndex] : null;
+      const theme = c.theme || (c.target ? { name: c.target.name || '主题色', hex: c.target.hex || randomTheme().hex, subtitle: '迁移主题色' } : null) || preset || randomTheme();
+      const items = (c.items || []).map((it) => (typeof it === 'string' ? { data: it, at: Date.now() } : it));
+      return {
+        id: c.id || `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        createdAt: c.createdAt || Date.now(),
+        theme,
+        items
+      };
+    });
+
+    if (!raw.currentId || !raw.challenges.some((c) => c.id === raw.currentId)) {
+      raw.currentId = raw.challenges[0].id;
+    }
+
+    return raw;
+  } catch {
+    return null;
+  }
+}
 function save() { try { localStorage.setItem(key, JSON.stringify(state)); return true; } catch { return false; } }
-function cur() { return state.challenges.find(c => c.id === state.currentId); }
+function cur() { return state.challenges.find(c => c.id === state.currentId) || state.challenges[0]; }
 
 function render() {
   const app = $('app');
@@ -261,4 +287,9 @@ function iconPalette(){return `<svg viewBox="0 0 24 24"><path d="M12 3.5C7 3.5 3
 function iconUser(){return `<svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.2"/><path d="M6.5 19c.9-2.2 2.9-3.5 5.5-3.5s4.6 1.3 5.5 3.5"/></svg>`}
 
 render();
-if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').then(r => r.update()).catch(() => {});
+// 临时禁用 SW，彻底避免旧缓存导致的白屏/代码混用
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.getRegistrations().then((regs) => {
+    regs.forEach((r) => r.unregister());
+  }).catch(() => {});
+}
