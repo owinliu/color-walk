@@ -1,435 +1,174 @@
-const TOKENS = {
-  colors: [
-    { name: '樱桃红', hex: '#D7263D' },
-    { name: '柑橘橙', hex: '#F57C00' },
-    { name: '向日葵黄', hex: '#F4C430' },
-    { name: '抹茶绿', hex: '#63A375' },
-    { name: '湖水青', hex: '#2A9D8F' }
-  ]
-};
+const COLORS = [
+  { name: '樱桃红', hex: '#D7263D', card: '#E02440', tint: '#EDE9FE', subtitle: '更容易出片的万能色', count: 9 },
+  { name: '雾霾蓝', hex: '#6B8AF7', card: '#6D86EE', tint: '#E5ECFF', subtitle: '清冷感氛围拉满', count: 6 },
+  { name: '奶油白', hex: '#F3E9D1', card: '#F4E7C7', tint: '#FFF8EA', subtitle: '适合做柔和干净的拼贴', count: 8 }
+];
 
-const MAX_PHOTOS = 9;
+const MAX = 9;
 const DAY_LIMIT = 3;
-const PASS_HUE = 24;
-const PASS_LIGHT = 0.28;
-
+const PASS_H = 24;
+const PASS_L = 0.28;
 const today = new Date().toISOString().slice(0, 10);
-const storeKey = `cw:spec-v2:${today}`;
+const key = `cw:ui-v3:${today}`;
+
 const $ = (id) => document.getElementById(id);
 
-let route = 'Home';
-let challengeState = 'preselect'; // preselect | selected
-let state = loadState() || initState();
-let generatingTimer = null;
+let state = load() || init();
+let route = 'challenge'; // home|challenge|my
+let challengeState = 'preselect'; // preselect|selected
+let showResult = false;
 
-function initState() {
-  const first = createChallenge();
-  return {
-    date: today,
-    currentId: first.id,
-    challenges: [first],
-    selectedThemeHex: first.target.hex,
-    collageDataUrl: null,
-    generating: false
-  };
+function init() {
+  const ch = createChallenge(0);
+  return { currentId: ch.id, challenges: [ch], colorIndex: 0, collage: null };
+}
+function createChallenge(colorIndex) {
+  return { id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, createdAt: Date.now(), colorIndex, items: [] };
+}
+function load() { try { return JSON.parse(localStorage.getItem(key)); } catch { return null; } }
+function save() { try { localStorage.setItem(key, JSON.stringify(state)); return true; } catch { return false; } }
+function cur() { return state.challenges.find(c => c.id === state.currentId); }
+function activeColor() { return COLORS[cur().colorIndex] || COLORS[0]; }
+
+function iconHome(active){return `<span class="icon">⌂</span>`}
+function iconPalette(){return `<span class="icon">◍</span>`}
+function iconUser(){return `<span class="icon">◡</span>`}
+
+function renderTop(title, left='☰', right='●') {
+  return `<div class="topbar"><button class="icon-btn">${left}</button><div class="top-title">${title}</div><button class="icon-btn">${right}</button></div>`;
 }
 
-function createChallenge(hex) {
-  const target = TOKENS.colors.find(c => c.hex === hex) || TOKENS.colors[Math.floor(Math.random() * TOKENS.colors.length)];
-  return { id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, createdAt: Date.now(), target, items: [] };
+function renderTabs() {
+  return `<div class="tabbar">
+    <button class="tab ${route==='home'?'active':''}" data-tab="home">${iconHome(route==='home')}</button>
+    <button class="tab center ${route==='challenge'?'active':''}" data-tab="challenge">${iconPalette(route==='challenge')}</button>
+    <button class="tab ${route==='my'?'active':''}" data-tab="my">${iconUser(route==='my')}</button>
+  </div>`;
 }
 
-function loadState() {
-  try {
-    const raw = JSON.parse(localStorage.getItem(storeKey));
-    if (!raw || !Array.isArray(raw.challenges) || !raw.challenges.length) return null;
-    return raw;
-  } catch {
-    return null;
+function viewHome() {
+  const color = activeColor();
+  const chips = COLORS.map((c, i) => `<button class="chip ${state.colorIndex===i?'active':''}" data-theme="${i}">${c.name}</button>`).join('') + `<button class="chip">更多</button>`;
+  const list = COLORS.slice(0,2).map((c,i)=>`<div class="trend-item"><div class="trend-left"><span class="sq" style="background:${c.card}"></span><div><div class="t1">${c.name} · ${c.count} 张</div><div class="t2">${c.subtitle}</div></div></div><button class="start-btn" data-start="${i}">开始</button></div>`).join('');
+  return `${renderTop('挑战')}
+  <div class="content">
+    <div class="chips">${chips}</div>
+    <section class="hero-card" style="background:${color.tint}">
+      <div class="hero-title">${color.name}挑战</div>
+      <div class="hero-sub">本周推荐 · 选色板更容易出片</div>
+      <div class="hero-tag">03/12-03/31</div>
+      <div class="hero-block"></div>
+    </section>
+    <div class="sec-head"><b>流行挑战</b><span>查看全部</span></div>
+    ${list}
+  </div>${renderTabs()}`;
+}
+
+function viewChallenge() {
+  const ch = cur();
+  const color = COLORS[ch.colorIndex];
+  if (challengeState === 'preselect') {
+    return `<div class="content page-gap">
+      <div class="headline"><div><div class="h22">挑战</div><div class="sub13">随机选一个颜色，拍同色物体完成 1-9 张色板</div></div><button class="icon-btn">i</button></div>
+      <section class="swatch-card" style="background:${color.card}">
+        <div class="sw-name">${color.name}</div><div class="sw-hex">${color.hex}</div>
+        <div class="sw-actions"><button class="ghost-white" id="shuffle">换个颜色</button><button class="dark" id="select">选定此色</button></div>
+      </section>
+      <section class="empty-card">
+        <div class="e1">先选定一个挑战色</div><div class="e2">选定后才会开启画板与拍照入口</div>
+        <div class="hint">点「换个颜色」直到喜欢为止</div>
+      </section>
+    </div>${renderTabs()}`;
   }
-}
 
-function saveState() {
-  try {
-    localStorage.setItem(storeKey, JSON.stringify(state));
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function currentChallenge() {
-  return state.challenges.find(c => c.id === state.currentId);
-}
-
-function tabBar(active) {
-  return `<nav class="tabbar">
-    <button class="tab ${active === 'Home' ? 'active' : ''}" data-go="Home">Home</button>
-    <button class="tab center ${active === 'Challenge' ? 'active' : ''}" data-go="Challenge">Challenge</button>
-    <button class="tab ${active === 'My' ? 'active' : ''}" data-go="My">My</button>
-  </nav>`;
-}
-
-function NavBar(title, sub = '') {
-  return `<div class="nav"><div><h1>${title}</h1>${sub ? `<div class="sub">${sub}</div>` : ''}</div></div>`;
-}
-
-function HeroCard() {
-  const theme = TOKENS.colors.find(c => c.hex === state.selectedThemeHex) || TOKENS.colors[0];
-  return `<section class="hero">
-    <div class="hero-title">Color Walk</div>
-    <div class="muted">今日主题灵感：${theme.name} ${theme.hex}</div>
-    <div style="margin-top:10px"><button class="btn primary" data-go="Challenge">开始挑战</button></div>
-  </section>`;
-}
-
-function ThemeChips() {
-  return `<div class="chips">${TOKENS.colors.map(c => `<button class="chip ${state.selectedThemeHex === c.hex ? 'active' : ''}" data-theme="${c.hex}">${c.name}</button>`).join('')}</div>`;
-}
-
-function SwatchCard(ch) {
-  return `<section class="swatch" style="background:${ch.target.hex}">
-    <div class="hex">${ch.target.hex}</div>
-    <div class="name">${ch.target.name}</div>
-  </section>`;
-}
-
-function Board(ch) {
-  return `<div class="board">${Array.from({ length: 9 }, (_, i) => {
+  const cells = Array.from({length:9}, (_,i)=>{
     const item = ch.items[i];
-    return item ? `<div class="cell"><img src="${item.data}"/></div>` : `<div class="cell">空位 ${i + 1}</div>`;
-  }).join('')}</div>`;
+    return `<button class="board-cell" data-pick="1">${item?`<img src="${item.data}"/>`:''}${!item&&i===ch.items.length?'<span class="plus">＋</span>':''}</button>`;
+  }).join('');
+
+  return `${renderTop('挑战进度','←','⋯')}
+    <div class="content slim-top">
+      <section class="progress-chip"><span class="sq40" style="background:${color.card}"></span><div class="grow"><div class="p1">${color.name}</div><div class="p2">已收集 ${ch.items.length}/9 · 继续拍同色物体</div></div><button class="continue" data-open-sheet="1">继续拍</button></section>
+      <section class="board-wrap"><div class="board-tip">点击格子可替换照片，或长按删除</div><div class="board">${cells}</div></section>
+      <button class="gen-btn" id="generate">生成拼接图片</button>
+      <section class="mini-note"><span>不够 9 张也可以生成</span><span>推荐 6-9 张效果更好</span></section>
+    </div>
+    ${showResult ? viewResult() : ''}
+    ${renderTabs()}`;
 }
 
-function HomeView() {
-  const trending = TOKENS.colors.slice(0, 3).map(c => `<div class="trending-item"><div><span class="dot" style="background:${c.hex}"></span>${c.name}</div><button class="btn" data-pick-theme="${c.hex}">进入</button></div>`).join('');
-  return `${NavBar('挑战', 'Home · sPwyl')}
-    <section class="card">
-      <div class="title">主题色</div>
-      ${ThemeChips()}
-    </section>
-    <section class="card">${HeroCard()}</section>
-    <section class="card">
-      <div class="title">Trending</div>
-      ${trending}
-    </section>
-    ${tabBar('Home')}`;
+function viewResult(){
+  const ch = cur(); const color = COLORS[ch.colorIndex];
+  return `<div class="overlay"><div class="result-card"><div class="preview"><div class="preview-tip">长按预览图保存到相册</div>${state.collage?`<img src="${state.collage}"/>`:''}</div><div class="meta"><span>由 ${ch.items.length} 张照片拼接</span><span>自动适配横竖图</span></div><div class="row2"><button id="share" class="dark2">系统分享</button><button id="download" class="light2">下载图片</button></div><button id="closeResult" class="link-btn">关闭</button></div></div>`;
 }
 
-function ChallengeView() {
-  const ch = currentChallenge();
-  return `${NavBar('挑战', 'Challenge · ZJZ7v')}
-    <section class="card">
-      ${SwatchCard(ch)}
-      <div class="row" style="margin-top:10px">
-        <button class="btn" id="rerollColor">换个颜色</button>
-        <button class="btn primary" id="selectColor">选定此色</button>
-      </div>
-      <div class="muted" style="margin-top:8px">状态：${challengeState === 'preselect' ? 'Preselect' : 'Selected'}</div>
-    </section>
-    ${tabBar('Challenge')}`;
+function viewMy(){
+  return `${renderTop('我的')}<div class="content"><section class="profile"><div class="avatar"></div><div><div class="name">Owin</div><div class="muted12">本周已完成 2 个挑战</div></div><button class="edit">编辑</button></section><section class="stats"><div><b>12</b><span>照片</span></div><div><b>3</b><span>拼图</span></div><div><b>2</b><span>挑战</span></div></section></div>${renderTabs()}`;
 }
 
-function ChallengeProgressView() {
-  const ch = currentChallenge();
-  return `${NavBar('挑战进度', 'ChallengeProgress · Bz4PQ')}
-    <section class="card">
-      <div class="row"><div class="title">${ch.target.name}</div><div class="muted">${ch.items.length}/${MAX_PHOTOS}</div></div>
-      ${Board(ch)}
-      <div class="row" style="margin-top:10px;flex-wrap:wrap;justify-content:flex-start">
-        <button class="btn" id="openPhotoSheet">开始拍摄/相册</button>
-        <button class="btn" id="clearCurrent">清空当前挑战</button>
-        <button class="btn primary" id="generateCollage" ${ch.items.length < MAX_PHOTOS ? 'disabled' : ''}>生成拼图</button>
-      </div>
-    </section>
-    ${tabBar('Challenge')}`;
+function render(){
+  if(route==='home') $('app').innerHTML = viewHome();
+  if(route==='challenge') $('app').innerHTML = viewChallenge();
+  if(route==='my') $('app').innerHTML = viewMy();
+  bind();
 }
 
-function CollageGeneratingView() {
-  return `${NavBar('正在拼接', 'CollageGenerating · uHhG7')}
-    <section class="card"><div class="title">生成中...</div><div class="muted">请稍候，按钮已置灰</div></section>`;
+function bind(){
+  document.querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>{route=b.dataset.tab;render();});
+  document.querySelectorAll('[data-theme]').forEach(b=>b.onclick=()=>{state.colorIndex=Number(b.dataset.theme);cur().colorIndex=state.colorIndex;save();render();});
+  document.querySelectorAll('[data-start]').forEach(b=>b.onclick=()=>{state.colorIndex=Number(b.dataset.start);cur().colorIndex=state.colorIndex;route='challenge';challengeState='preselect';save();render();});
+
+  const shuffle=$('shuffle'); if(shuffle) shuffle.onclick=()=>{const n=(cur().colorIndex+1)%COLORS.length; cur().colorIndex=n; state.colorIndex=n; save(); render();};
+  const select=$('select'); if(select) select.onclick=()=>{challengeState='selected'; ensureDailyChallenge(); save(); render();};
+
+  document.querySelectorAll('[data-open-sheet],[data-pick]').forEach(b=>b.onclick=()=>{$('photoSheet').classList.remove('hidden');});
+  const gen=$('generate'); if(gen) gen.onclick=async()=>{state.collage=await makeCollage(cur()); save(); showResult=true; render();};
+  const closeR=$('closeResult'); if(closeR) closeR.onclick=()=>{showResult=false; render();};
+
+  const share=$('share'); if(share) share.onclick=shareImage;
+  const dl=$('download'); if(dl) dl.onclick=downloadImage;
+
+  $('pickCamera').onclick=()=>$('cameraInput').click();
+  $('pickAlbum').onclick=()=>$('albumInput').click();
+  $('closeSheet').onclick=()=>$('photoSheet').classList.add('hidden');
 }
 
-function CollageResultView() {
-  return `${NavBar('拼接结果', 'CollageResult · u4F87')}
-    <section class="card">
-      ${state.collageDataUrl ? `<img src="${state.collageDataUrl}" style="width:100%;border-radius:14px"/>` : '<div class="muted">暂无结果</div>'}
-      <div class="row" style="margin-top:10px;justify-content:flex-start;flex-wrap:wrap">
-        <button class="btn primary" id="shareImage">系统分享</button>
-        <button class="btn" id="downloadImage">下载图片</button>
-      </div>
-    </section>`;
+function ensureDailyChallenge(){
+  const current = cur();
+  const next = createChallenge(current.colorIndex);
+  if(state.challenges.length < DAY_LIMIT){state.challenges.push(next); state.currentId=next.id; return;}
+  const oldest=[...state.challenges].sort((a,b)=>a.createdAt-b.createdAt)[0];
+  if(!confirm(`今日挑战已满3个，将覆盖最早挑战（${COLORS[oldest.colorIndex].name} ${oldest.items.length}/9），继续？`)) return;
+  state.challenges=state.challenges.filter(c=>c.id!==oldest.id);
+  state.challenges.push(next); state.currentId=next.id;
 }
 
-function MyView() {
-  const list = state.challenges.map(c => `<div class="trending-item"><div><span class="dot" style="background:${c.target.hex}"></span>${c.target.name} · ${c.items.length}/9</div><button class="btn" data-switch-id="${c.id}">继续</button></div>`).join('');
-  return `${NavBar('我的', 'My · XGO8b')}
-    <section class="card"><div class="title">我的调色板 / 历史</div>${list || '<div class="muted">暂无</div>'}</section>
-    ${tabBar('My')}`;
+$('cameraInput').onchange = handlePick;
+$('albumInput').onchange = handlePick;
+
+async function handlePick(e){
+  const file=e.target.files?.[0]; if(!file) return;
+  const ch=cur();
+  try{
+    let data=await fileToData(file); data=await normalize(data);
+    const avg=await sample(data); if(!match(avg, hex2rgb(COLORS[ch.colorIndex].hex))){ alert('颜色不够接近，请再试一张'); return; }
+    if(ch.items.length<MAX){ ch.items.push({data,at:Date.now()}); if(!save()) {ch.items.pop(); alert('保存失败');} }
+  }catch{ alert('图片解析失败，请换一张或截图后再试'); }
+  finally{ $('photoSheet').classList.add('hidden'); e.target.value=''; render(); }
 }
 
-function render() {
-  const app = $('app');
-  if (route === 'Home') app.innerHTML = HomeView();
-  if (route === 'Challenge') app.innerHTML = ChallengeView();
-  if (route === 'ChallengeProgress') app.innerHTML = ChallengeProgressView();
-  if (route === 'CollageGenerating') app.innerHTML = CollageGeneratingView();
-  if (route === 'CollageResult') app.innerHTML = CollageResultView();
-  if (route === 'My') app.innerHTML = MyView();
-  bindEvents();
-}
+function fileToData(file){ return new Promise((res,rej)=>{const fr=new FileReader();fr.onload=()=>res(fr.result);fr.onerror=rej;fr.readAsDataURL(file);}); }
+function loadImg(src){ return new Promise((res,rej)=>{const i=new Image();i.onload=()=>res(i);i.onerror=rej;i.src=src;}); }
+async function normalize(data){ const img=await loadImg(data); const c=$('work'),ctx=c.getContext('2d'); const max=960; const s=Math.min(1,max/Math.max(img.width,img.height)); c.width=Math.max(1,Math.round(img.width*s)); c.height=Math.max(1,Math.round(img.height*s)); ctx.drawImage(img,0,0,c.width,c.height); return c.toDataURL('image/jpeg',0.75); }
+async function sample(data){ const img=await loadImg(data); const c=$('work'),ctx=c.getContext('2d',{willReadFrequently:true}); c.width=180;c.height=180;ctx.drawImage(img,0,0,180,180); const d=ctx.getImageData(40,40,100,100).data; let r=0,g=0,b=0,n=0; for(let i=0;i<d.length;i+=4){ if(d[i+3]<10) continue; r+=d[i];g+=d[i+1];b+=d[i+2];n++; } return {r:Math.round(r/n),g:Math.round(g/n),b:Math.round(b/n)}; }
+function hex2rgb(hex){const n=parseInt(hex.slice(1),16); return {r:(n>>16)&255,g:(n>>8)&255,b:n&255};}
+function rgb2hsl({r,g,b}){r/=255;g/=255;b/=255;const mx=Math.max(r,g,b),mn=Math.min(r,g,b);let h=0,s=0,l=(mx+mn)/2;if(mx!==mn){const d=mx-mn;s=l>.5?d/(2-mx-mn):d/(mx+mn);if(mx===r)h=(g-b)/d+(g<b?6:0);else if(mx===g)h=(b-r)/d+2;else h=(r-g)/d+4;h*=60;}return{h,s,l};}
+function match(a,b){const A=rgb2hsl(a),B=rgb2hsl(b);const dh=Math.min(Math.abs(A.h-B.h),360-Math.abs(A.h-B.h));return dh<=PASS_H&&Math.abs(A.l-B.l)<=PASS_L;}
 
-function bindEvents() {
-  document.querySelectorAll('[data-go]').forEach(el => el.onclick = () => {
-    route = el.dataset.go;
-    if (route === 'Challenge') challengeState = 'preselect';
-    render();
-  });
-
-  document.querySelectorAll('[data-theme]').forEach(el => el.onclick = () => {
-    state.selectedThemeHex = el.dataset.theme;
-    saveState();
-    render();
-  });
-
-  document.querySelectorAll('[data-pick-theme]').forEach(el => el.onclick = () => {
-    state.selectedThemeHex = el.dataset.pickTheme;
-    const ch = currentChallenge();
-    ch.target = TOKENS.colors.find(c => c.hex === state.selectedThemeHex) || ch.target;
-    saveState();
-    route = 'Challenge';
-    render();
-  });
-
-  const reroll = $('rerollColor');
-  if (reroll) reroll.onclick = () => {
-    const ch = currentChallenge();
-    ch.target = TOKENS.colors[Math.floor(Math.random() * TOKENS.colors.length)];
-    state.selectedThemeHex = ch.target.hex;
-    saveState();
-    render();
-  };
-
-  const selectColor = $('selectColor');
-  if (selectColor) selectColor.onclick = () => {
-    challengeState = 'selected';
-    upsertChallengeByRule();
-    route = 'ChallengeProgress';
-    saveState();
-    render();
-  };
-
-  const openSheet = $('openPhotoSheet');
-  if (openSheet) openSheet.onclick = () => $('photoSheet').classList.remove('hidden');
-
-  const clearCurrent = $('clearCurrent');
-  if (clearCurrent) clearCurrent.onclick = () => {
-    if (!confirm('清空当前挑战已上传图片？')) return;
-    currentChallenge().items = [];
-    saveState();
-    render();
-  };
-
-  const gen = $('generateCollage');
-  if (gen) gen.onclick = async () => {
-    route = 'CollageGenerating';
-    render();
-    clearTimeout(generatingTimer);
-    generatingTimer = setTimeout(async () => {
-      state.collageDataUrl = await makeCollage(currentChallenge());
-      saveState();
-      route = 'CollageResult';
-      render();
-    }, 1000);
-  };
-
-  const share = $('shareImage');
-  if (share) share.onclick = shareResult;
-
-  const dl = $('downloadImage');
-  if (dl) dl.onclick = downloadResult;
-
-  document.querySelectorAll('[data-switch-id]').forEach(el => el.onclick = () => {
-    state.currentId = el.dataset.switchId;
-    route = 'ChallengeProgress';
-    saveState();
-    render();
-  });
-
-  $('pickCamera').onclick = () => $('cameraInput').click();
-  $('pickAlbum').onclick = () => $('albumInput').click();
-  $('closeSheet').onclick = () => $('photoSheet').classList.add('hidden');
-}
-
-function upsertChallengeByRule() {
-  const cur = currentChallenge();
-  // create/replace according to daily max=3
-  const newCh = createChallenge(cur.target.hex);
-  if (state.challenges.length < DAY_LIMIT) {
-    state.challenges.push(newCh);
-    state.currentId = newCh.id;
-    return;
-  }
-  const oldest = [...state.challenges].sort((a, b) => a.createdAt - b.createdAt)[0];
-  const ok = confirm(`今日挑战已满3个，将覆盖最早挑战（${oldest.target.name} ${oldest.items.length}/9），继续？`);
-  if (!ok) return;
-  state.challenges = state.challenges.filter(c => c.id !== oldest.id);
-  state.challenges.push(newCh);
-  state.currentId = newCh.id;
-}
-
-$('cameraInput').onchange = (e) => handlePick(e);
-$('albumInput').onchange = (e) => handlePick(e);
-
-async function handlePick(e) {
-  const file = e.target.files?.[0];
-  if (!file) return;
-  const ch = currentChallenge();
-  if (ch.items.length >= MAX_PHOTOS) return;
-
-  try {
-    let data = await fileToData(file);
-    data = await normalizeImage(data);
-    const avg = await sampleColor(data);
-    const pass = isMatch(avg, hexToRgb(ch.target.hex));
-    if (!pass) {
-      alert('颜色不够接近，请再试一张');
-      return;
-    }
-
-    ch.items.push({ data, at: Date.now() });
-    if (!saveState()) {
-      ch.items.pop();
-      alert('保存失败，请清理存储后重试');
-      return;
-    }
-
-    if (route === 'ChallengeProgress') render();
-  } catch {
-    alert('图片解析失败，请换一张或截图后再试');
-  } finally {
-    $('photoSheet').classList.add('hidden');
-    e.target.value = '';
-  }
-}
-
-function fileToData(file) {
-  return new Promise((resolve, reject) => {
-    const fr = new FileReader();
-    fr.onload = () => resolve(fr.result);
-    fr.onerror = reject;
-    fr.readAsDataURL(file);
-  });
-}
-
-function loadImage(src) {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.onload = () => resolve(img);
-    img.onerror = reject;
-    img.src = src;
-  });
-}
-
-async function normalizeImage(dataUrl) {
-  const img = await loadImage(dataUrl);
-  const c = $('work');
-  const ctx = c.getContext('2d');
-  const max = 960;
-  const scale = Math.min(1, max / Math.max(img.width, img.height));
-  c.width = Math.max(1, Math.round(img.width * scale));
-  c.height = Math.max(1, Math.round(img.height * scale));
-  ctx.drawImage(img, 0, 0, c.width, c.height);
-  return c.toDataURL('image/jpeg', 0.75);
-}
-
-async function sampleColor(dataUrl) {
-  const img = await loadImage(dataUrl);
-  const c = $('work');
-  const ctx = c.getContext('2d', { willReadFrequently: true });
-  c.width = 180; c.height = 180;
-  ctx.drawImage(img, 0, 0, 180, 180);
-  const d = ctx.getImageData(40, 40, 100, 100).data;
-  let r = 0, g = 0, b = 0, n = 0;
-  for (let i = 0; i < d.length; i += 4) {
-    if (d[i + 3] < 10) continue;
-    r += d[i]; g += d[i + 1]; b += d[i + 2]; n++;
-  }
-  return { r: Math.round(r / n), g: Math.round(g / n), b: Math.round(b / n) };
-}
-
-function hexToRgb(hex) {
-  const n = parseInt(hex.replace('#', ''), 16);
-  return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
-}
-
-function rgbToHsl({ r, g, b }) {
-  r /= 255; g /= 255; b /= 255;
-  const max = Math.max(r, g, b), min = Math.min(r, g, b);
-  let h = 0, s = 0; const l = (max + min) / 2;
-  if (max !== min) {
-    const d = max - min;
-    s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
-    if (max === r) h = (g - b) / d + (g < b ? 6 : 0);
-    else if (max === g) h = (b - r) / d + 2;
-    else h = (r - g) / d + 4;
-    h *= 60;
-  }
-  return { h, s, l };
-}
-
-function isMatch(a, b) {
-  const A = rgbToHsl(a), B = rgbToHsl(b);
-  const dh = Math.min(Math.abs(A.h - B.h), 360 - Math.abs(A.h - B.h));
-  return dh <= PASS_HUE && Math.abs(A.l - B.l) <= PASS_LIGHT;
-}
-
-async function makeCollage(ch) {
-  const c = document.createElement('canvas');
-  c.width = 1080; c.height = 1440;
-  const ctx = c.getContext('2d');
-  ctx.fillStyle = '#F8FAFC'; ctx.fillRect(0, 0, 1080, 1440);
-  ctx.fillStyle = ch.target.hex; ctx.fillRect(0, 0, 1080, 170);
-  const cell = 300, gap = 18, sx = 72, sy = 230;
-  for (let i = 0; i < 9; i++) {
-    const x = sx + (i % 3) * (cell + gap), y = sy + Math.floor(i / 3) * (cell + gap);
-    ctx.fillStyle = '#E5E7EB'; ctx.fillRect(x, y, cell, cell);
-    if (ch.items[i]?.data) {
-      const im = await loadImage(ch.items[i].data);
-      ctx.drawImage(im, x, y, cell, cell);
-    }
-  }
-  return c.toDataURL('image/png');
-}
-
-async function shareResult() {
-  if (!state.collageDataUrl) return;
-  const file = dataUrlToFile(state.collageDataUrl, 'color-walk.png');
-  if (navigator.canShare && navigator.canShare({ files: [file] })) {
-    await navigator.share({ files: [file], title: 'Color Walk' });
-  } else {
-    alert('当前浏览器不支持系统分享');
-  }
-}
-
-function downloadResult() {
-  if (!state.collageDataUrl) return;
-  const a = document.createElement('a');
-  a.href = state.collageDataUrl;
-  a.download = 'color-walk.png';
-  a.click();
-}
-
-function dataUrlToFile(dataUrl, fileName) {
-  const [meta, b64] = dataUrl.split(',');
-  const mime = (meta.match(/data:(.*?);base64/) || [])[1] || 'image/png';
-  const bin = atob(b64);
-  const arr = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
-  return new File([arr], fileName, { type: mime });
-}
+async function makeCollage(ch){ const c=document.createElement('canvas'),ctx=c.getContext('2d'); c.width=1080;c.height=1440; ctx.fillStyle='#f8fafc';ctx.fillRect(0,0,1080,1440); const color=COLORS[ch.colorIndex]; ctx.fillStyle=color.card;ctx.fillRect(0,0,1080,170); const cell=300,g=18,sx=72,sy=230; for(let i=0;i<9;i++){const x=sx+(i%3)*(cell+g),y=sy+Math.floor(i/3)*(cell+g); ctx.fillStyle='#e5e7eb';ctx.fillRect(x,y,cell,cell); if(ch.items[i]?.data){const im=await loadImg(ch.items[i].data); ctx.drawImage(im,x,y,cell,cell);} } return c.toDataURL('image/png'); }
+async function shareImage(){ if(!state.collage) return; const file=dataURLtoFile(state.collage,'color-walk.png'); if(navigator.canShare&&navigator.canShare({files:[file]})){ await navigator.share({title:'Color Walk',files:[file]}); } else alert('当前浏览器不支持系统分享'); }
+function downloadImage(){ if(!state.collage) return; const a=document.createElement('a');a.href=state.collage;a.download='color-walk.png';a.click(); }
+function dataURLtoFile(dataUrl,fileName){const [meta,b64]=dataUrl.split(',');const mime=(meta.match(/data:(.*?);base64/)||[])[1]||'image/png';const bin=atob(b64);const arr=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)arr[i]=bin.charCodeAt(i);return new File([arr],fileName,{type:mime});}
 
 render();
-if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('./sw.js').then(r => r.update()).catch(() => {});
-}
+if('serviceWorker' in navigator){ navigator.serviceWorker.register('./sw.js').then(r=>r.update()).catch(()=>{}); }
